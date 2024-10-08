@@ -127,7 +127,7 @@ def main():
     EPOCHS = 10000
     MAX_STEP = 6000
     best_reward = -np.inf
-    agent = get_training_agent(agent_name='PPO', max_step=MAX_STEP)    
+    agent = get_training_agent(agent_name='PPO_LOAD', max_step=MAX_STEP, model_path='./agent/PPO/weight_41.pth')
     env = make_env(env_id=3)
     set
     console_speed:bool = False
