@@ -42,6 +42,7 @@ class SingleAgentRaceEnv(gymnasium.Env):
 
     def reset(self, *, seed: Optional[int] = None, options: Optional[Dict[str, Any]] = None) -> Tuple[ObsType, Dict[str, Any]]:
         super().reset(seed=seed, options=options)
+
         if not self._initialized:
             self._scenario.world.init()
             self._initialized = True

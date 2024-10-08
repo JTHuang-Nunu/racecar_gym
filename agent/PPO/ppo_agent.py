@@ -8,6 +8,9 @@ from torch.optim.adam import Adam
 from .policy_network import PolicyNet
 from .value_network import ValueNet
 
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+
 
 class PPOAgent:
     def __init__(self,
@@ -23,7 +26,8 @@ class PPOAgent:
                  sample_n_epoch: int = 4,
                  sample_mb_size: int = 64,
                  is_training: bool = True,
-                 model_path: str = "./agent/weight.pth",
+                 is_resume_training: bool = False,
+                 model_path: str = "",
                  device: str = "cuda:0"
                  ) -> None:
         # Initialize hyperparameters
@@ -39,7 +43,11 @@ class PPOAgent:
         self.sample_n_epoch = sample_n_epoch
         self.sample_mb_size = sample_mb_size
         self.is_training = is_training
-        self.model_path = model_path
+        self.is_resume_training = is_resume_training # Add
+        if not model_path: 
+            self.model_path = self.create_model_path()
+        else:
+            self.model_path = model_path
         self.device = device
         self.memory_counter = 0
 
@@ -56,7 +64,7 @@ class PPOAgent:
         self.mb_rewards = np.zeros((self.max_step,), dtype=np.float32)
         self.mb_a_logps = np.zeros((self.max_step,), dtype=np.float32)
 
-        if not self.is_training:
+        if (not self.is_training) | self.is_resume_training:
             self.load_model()
 
     def compute_discounted_return(self,
@@ -77,7 +85,14 @@ class PPOAgent:
 
         # TODO: G_{n-1} = r_{n-1} + gamma * last_value
         # TODO: G_t = r_t + gamma * G_{t+1}
-        pass
+        for t in reversed(range(n_step)):
+            if t == n_step-1:
+                returns[t]=rewards[t]+self.gamma*last_value
+            else:
+                returns[t]=rewards[t]+self.gamma*returns[t+1]
+
+        return returns
+    
 
     def compute_gae(self,
                     rewards: np.ndarray,
@@ -100,8 +115,14 @@ class PPOAgent:
 
         # TODO: delta_t = r_t + gamma * (V(s_{t+1}) - V(s_t))
         # TODO: adv_t = delta_t + gamma * lamb * adv_{t+1}
-        pass
-
+        for t in reversed(range(n_step)):
+            if t == n_step-1:
+                next_value = last_value
+            else:
+                next_value = values[t+1]
+            delta = rewards[t] + self.gamma * next_value - values[t]
+            advs[t] = last_gae_lam = delta + self.gamma * self.lamb * last_gae_lam
+        return advs + values
     @staticmethod
     def obs_preprocess(obs: dict) -> np.ndarray:
         """
@@ -116,9 +137,29 @@ class PPOAgent:
 
         """
 
-        # TODO Make your own observation preprocessing
+        
+        def norm(data, max_val=None, min_val=None):
+            if max_val is None or min_val is None:
+                max_val = np.max(data)
+                min_val = np.min(data)
+            
+            if max_val == min_val:
+                raise ValueError("Max and min values are the same, normalization is not possible.")
 
-        return np.concatenate([obs['pose'], obs['velocity'], obs['acceleration'], obs['lidar']], axis=-1)
+            _range = max_val - min_val
+
+            return (data - min_val) / _range
+        _pose = norm(obs['pose'], 50, 0)
+        _velocity = norm(obs['velocity'],10,-10)
+        _acceleration = norm(np.clip(obs['acceleration'],-100,100), 100,-100)
+        _lidar = norm(obs['lidar'], 10, 0)
+
+        obs_print = ['acceleration', 'lidar']
+        # for obj in obs_print:
+        #     print(obj, np.argmax(obs[obj]), obs[obj].max(),"||" ,np.argmin(obs[obj]),obs[obj].min())
+            
+        return np.concatenate([_pose,_velocity,_acceleration,_lidar],axis=-1)
+        # return np.concatenate([obs['pose'], obs['velocity'], obs['acceleration'], obs['lidar']], axis=-1)
 
     def get_action(self, obs: dict) -> tuple | dict[str:float, str:float]:
         """
@@ -193,6 +234,10 @@ class PPOAgent:
             sample_mb_size = self.sample_mb_size
 
         # Training
+        '''
+        Random Sample epoch and batch.
+        Reduce the computing resources and prevent the model from copying the answer.
+        '''
         for i in range(self.sample_n_epoch):
             np.random.shuffle(rand_idx)
 
@@ -207,7 +252,23 @@ class PPOAgent:
                 sample_old_a_logps = mb_old_a_logps[sample_idx]
 
                 # TODO: PPO algorithm
+                sample_a_logps, sample_ents = self.policy_net.evaluate(sample_obs, sample_actions)
+                sample_values = self.value_net(sample_obs)
+                ent = sample_ents.mean()
 
+                # Compute value loss
+                v_pred_clip = sample_old_values \
+                    + torch.clamp(sample_values - sample_old_values, -self.clip_val, self.clip_val)
+
+                v_loss1 = (sample_returns - sample_values) ** 2
+                v_loss2 = (sample_returns - v_pred_clip) ** 2
+                v_loss = torch.max(v_loss1, v_loss2).mean()
+
+                # Compute pg loss (Policy Gradient Loss)
+                ratio = (sample_a_logps - sample_old_a_logps).exp()
+                pg_loss1 = ratio * -sample_advs
+                pg_loss2 = torch.clamp(ratio, min=1.0-self.clip_val, max=1.0+self.clip_val) * -sample_advs
+                pg_loss = torch.max(pg_loss1, pg_loss2).mean() - self.ent_weight * ent
 
                 # Train actor
                 self.opt_policy.zero_grad()
@@ -250,6 +311,25 @@ class PPOAgent:
 
         self.memory_counter += 1
 
+    def create_model_path(self)-> str:
+        # 確保文件夾存在，否則創建
+        folder_path = './agent/PPO/weight'
+        os.makedirs(folder_path, exist_ok=True)
+
+        # 檢查是否有以 'weight' 開頭的檔案
+        existing_weights = [f for f in os.listdir(folder_path) if f.startswith('weight')]
+
+        # 設置新的文件名稱，如果已有相同名稱的檔案，則創建新的唯一名稱
+        if existing_weights:
+            # 取得當前最大編號
+            existing_indices = [int(f.split('_')[-1].split('.')[0]) for f in existing_weights if '_' in f]
+            new_index = max(existing_indices) + 1 if existing_indices else 1
+        else:
+            # 如果沒有以 weight 開頭的檔案，從 1 開始
+            new_index = 1
+        new_weight_path = os.path.join(folder_path, f'weight_{new_index}.pth')
+        return new_weight_path
+    
     def save_model(self) -> None:
         """Save model"""
         torch.save(self.policy_net.state_dict(), self.model_path)

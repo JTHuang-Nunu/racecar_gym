@@ -20,12 +20,13 @@ def main():
     env = gymnasium.make(
         'SingleAgentAustria-v0',
         render_mode=render_mode,
-        scenario='scenarios/circle_cw.yml',  # change the scenario here (change map)
+        # scenario='scenarios/circle_cw.yml',  # change the scenario here (change map)
+        scenario='scenarios/torino.yml'
         # scenario='scenarios/validation.yml',  # change the scenario here (change map), ONLY USE THIS FOR VALIDATION
         # scenario='scenarios/validation2.yml',   # Use this during the midterm competition, ONLY USE THIS FOR VALIDATION
     )
     done = False
-    agent = get_valid_agent()
+    agent = get_valid_agent(agent_name='PPO_VALID')
 
     # ======================================================================
     # Run the environment

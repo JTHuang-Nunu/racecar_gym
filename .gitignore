@@ -1,3 +1,7 @@
+# Add by JT
+*.zip
+/.bak
+#---
 .idea/
 
 # Byte-compiled / optimized / DLL files
