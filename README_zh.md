@@ -29,7 +29,7 @@
     pip install -e .
    ```
 * 將你的 agent 資料夾放入`新項目`中
-* 執行 `python validation_script.py`
+* 執行 `python check_env_script.py`
 * 如果能正常執行，則表示你的提交文件無誤。
 
 ## 如何控制賽車並訓練 RL 智能體？
@@ -58,7 +58,7 @@
 3. 為了測試環境，請執行以下命令
     ```shell
     conda activate racing
-    python validation_script.py
+    python check_env_script.py
     ```
 
 ---

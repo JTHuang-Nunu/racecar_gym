@@ -1,0 +1,8 @@
+newmtl defaultMat
+Kd 0.9063317 0.9063317 0.9063317
+illum 2
+
+newmtl New Material 1
+Kd 0.6132076 0.6132076 0.6132076
+illum 2
+

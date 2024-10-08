@@ -30,7 +30,7 @@
     pip install -e .
    ```
 * Place your `agent` folder into the `new project`
-* Execute `python validation_script.py`
+* Execute `python check_env_script.py`
 * If it can be executed normally, it means that your submission documents are fine.
 
 ## How to control the car and training a RL agent ?
@@ -68,7 +68,7 @@
 3. For testing the environment, Execute the following command
     ```shell
     conda activate racing
-    python validation_script.py
+    python check_env_script.py
     ```
 
 ---

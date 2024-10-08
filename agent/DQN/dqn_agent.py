@@ -52,7 +52,9 @@ class DQNAgent:
         self.target_update = target_update
         self.is_training = is_training
         self.model_path = model_path
-        self.device = device
+        # self.device = device
+        # torch device可能會沒有GPU
+        self.device = torch.device(device if "cuda" in device and torch.cuda.is_available() else "cpu")
 
         # Build memory
         self.memory = ReplayBuffer(memory_size, state_dim)
@@ -95,7 +97,7 @@ class DQNAgent:
 
         Args:
             obs: dict
-                `{'rgb_image': ndarray(128, 128, 3), 'lidar': ndarray(1080,), 'pose': ndarray(6,), 'velocity': ndarray(6,), 'acceleration': ndarray(6,), time: ndarray(1,}`
+                `{'rgb_image': ndarray(128, 128, 3), 'lidar': ndarray(1080,), 'pose': ndarray(6,), 'velocity': ndarray(6,), 'acceleration': ndarray(6,)`
 
         Returns: np.ndarray
             agent observation input
