@@ -43,19 +43,12 @@ class PPOAgent:
         self.sample_n_epoch = sample_n_epoch
         self.sample_mb_size = sample_mb_size
         self.is_training = is_training
-<<<<<<< HEAD
         self.is_resume_training = is_resume_training # Add
         if not model_path: 
             self.model_path = self.create_model_path()
         else:
             self.model_path = model_path
         self.device = torch.device(device if "cuda" in device and torch.cuda.is_available() else "cpu")
-=======
-        self.model_path = model_path
-        # self.device = device
-        # torch device可能會沒有GPU
-        self.device = torch.device(device if "cuda" in device and torch.cuda.is_available() else "cpu")
->>>>>>> 1a1ceb22be47527a6e384ecaaf28dd31fef278a8
         self.memory_counter = 0
 
         # Build networks
