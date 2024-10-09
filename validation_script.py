@@ -26,7 +26,7 @@ def main():
         # scenario='scenarios/validation2.yml',   # Use this during the midterm competition, ONLY USE THIS FOR VALIDATION
     )
     done = False
-    agent = get_valid_agent(agent_name='PPO_VALID')
+    agent = get_valid_agent(agent_name='PPO_VALID', model_path='./agent/PPO/weight_23.pth')
 
     # ======================================================================
     # Run the environment

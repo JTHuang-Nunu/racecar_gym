@@ -42,8 +42,8 @@ def get_training_agent(agent_name: str = 'DQN', max_step: int = 6000, model_path
             clip_val=0.2,
             max_grad_norm=0.5,
             ent_weight=0.01,
-            sample_n_epoch=4,
-            sample_mb_size=64,
+            sample_n_epoch=10, # 4->10
+            sample_mb_size=32, # 64->128
             is_training=True,
             is_resume_training=True,
             # model_path='./agent/PPO/weight.pth'
@@ -56,7 +56,7 @@ def get_training_agent(agent_name: str = 'DQN', max_step: int = 6000, model_path
     return agent
 
 
-def get_valid_agent(agent_name: str = 'DQN'):
+def get_valid_agent(agent_name: str = 'DQN', model_path: str = None):
     if agent_name == 'DQN':
         agent = DQNAgent(
             state_dim=1098,
@@ -99,7 +99,7 @@ def get_valid_agent(agent_name: str = 'DQN'):
             sample_n_epoch=4,
             sample_mb_size=64,
             is_training=False,
-            model_path='./agent/PPO/weight.pth'
+            model_path='./agent/PPO/weight_41.pth' if model_path is None else model_path
         )
     else:
         raise NotImplementedError

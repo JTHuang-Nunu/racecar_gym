@@ -22,9 +22,16 @@ import matplotlib.pyplot as plt
 # plt.grid(True)
 # plt.show()
 
-a = [1,2,3]
+steer = -1.25
 # if a !=0:
 #     print('a')
 # else:
 #     print('b')
-print(a[0:])
+if -0.8<steer < 0.8:
+    print(True)
+
+a = 4
+b = 3
+
+if b> 4> a:
+    print('True123')

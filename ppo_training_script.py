@@ -127,7 +127,7 @@ def main():
     EPOCHS = 10000
     MAX_STEP = 6000
     best_reward = -np.inf
-    agent = get_training_agent(agent_name='PPO_LOAD', max_step=MAX_STEP, model_path='./agent/PPO/weight_41.pth')
+    agent = get_training_agent(agent_name='PPO_LOAD', max_step=MAX_STEP, model_path='./agent/PPO/weight/weight_8.pth')
     env = make_env(env_id=3)
     set
     console_speed:bool = False
@@ -136,7 +136,7 @@ def main():
     for e in range(EPOCHS):
         obs, info = env.reset(options=dict(mode='random')) # mode='grid', 'random', 'random_ball'
         # p.resetDebugVisualizerCamera(cameraDistance=30, cameraYaw=0, cameraPitch=-70, cameraTargetPosition=[0,0,0])
-        task = MixTask(task_weights={'progress': 5, 'tracking': 0.0, 'collision': 1.0}, obs=obs, info=info)
+        task = MixTask(task_weights={'progress': 1, 'tracking': 0.0, 'collision': 1.0}, obs=obs, info=info)
         t = 0
         total_reward = 0
         done = False
@@ -157,11 +157,11 @@ def main():
 
             # Calculate reward
             reward = float(0.0)
-            task_reward = task.reward(states, action)
+            task_reward,done = task.reward(states, action)
             reward += task_reward
             # reward += check_lidar(obs, states, action)
-            done = task.done(states)
-
+            if t<100:
+                reward = 0
 
             total_reward += reward
             if total_reward <= -10 or done:
