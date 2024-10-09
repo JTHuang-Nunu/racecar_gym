@@ -152,7 +152,8 @@ class PPOAgent:
         _pose = norm(obs['pose'], 50, 0)
         _velocity = norm(obs['velocity'],10,-10)
         _acceleration = norm(np.clip(obs['acceleration'],-100,100), 100,-100)
-        _lidar = norm(obs['lidar'], 10, 0)
+        obs['lidar'][obs['lidar']>7] = 7
+        _lidar = norm(obs['lidar'], 7, 0)
 
         obs_print = ['acceleration', 'lidar']
         # for obj in obs_print:
