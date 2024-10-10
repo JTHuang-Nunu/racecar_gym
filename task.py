@@ -1,7 +1,7 @@
 from racecar_gym.tasks import Task
 import numpy as np
 import matplotlib.pyplot as plt
-
+import logging
 
 class MixTask:
     def __init__(self, task_weights: dict, obs, info):
@@ -16,6 +16,7 @@ class MixTask:
         self.progress_cum_reward = []
         self.tracking_cum_reward = []
         self.collision_cum_reward = []
+        logging.debug('Task Initialized')
     
     def reward(self, states, action) -> tuple[float, bool]: 
         self.progress_reward = self.task_weights['progress'] * self.ProgressTask.reward(states, action)
@@ -128,9 +129,12 @@ class CollisionDetectionTask:
         # self._fig = plt.figure(figsize=(10, 5))
 
         # Speed
-        self._opitmal_speed = 5.0
-        self._max_speed = 7.0
+        self._opitmal_speed = 3.0
+        self._max_speed = 5.0
         self._min_speed = 0.3
+        # self._opitmal_acceleration = 5.0
+        # self._max_acceleration = 7.0
+        # self._min_sacceleration = 0.3
         
     def reward(self, states, action) -> float:
         # If a collision occurs, return the collision penalty
@@ -139,7 +143,7 @@ class CollisionDetectionTask:
         if curr_reward == self._collision_penalty: # Collision
             return curr_reward
         else:
-            curr_reward += self._check_lidar3(states, action) #TODO
+            curr_reward += self._check_lidar4(states, action) #TODO
             return curr_reward
 
     def done(self, states) -> bool:
@@ -153,6 +157,210 @@ class CollisionDetectionTask:
     
     def reset(self):
         self._collided = False
+
+
+    def _check_lidar4(self, states, action) -> float: # 1010
+        self._lidar_high_margin = 4
+        t_last = 0
+        range = 50
+        lidar_scans = states['lidar'][range:-range]  # Assuming lidar data is stored in state['lidar']
+        
+        
+        curr_reward = float(0.0)
+        velocity = np.linalg.norm(states['velocity'][:3])
+        acceleration = np.linalg.norm(states['acceleration'][:3])
+        acceleration = 20 if acceleration > 20 else acceleration
+        acceleration = -100 if acceleration < -100 else acceleration
+        steer = action[1]
+
+        # Look far way
+        high_lidar_indices = np.where(lidar_scans > self._lidar_high_margin)[0] # [100: 980] > 4
+        len_high_lidar = len(high_lidar_indices)
+        lidar_mid_index = len(lidar_scans)//2
+        if abs(np.where(high_lidar_indices > lidar_mid_index)[0].size - np.where(high_lidar_indices < lidar_mid_index)[0].size) > 10: # 差值大於10
+            # Deviation Range
+            high_lidar_mid = high_lidar_indices[len_high_lidar//2]
+            deviation_range = 100 # 100->75
+
+            # self._display_lidar(states)
+            if high_lidar_mid < lidar_mid_index + deviation_range and high_lidar_mid > lidar_mid_index - deviation_range:
+                if self._min_speed < velocity < self._opitmal_speed:
+                    curr_reward += 0.005 * velocity
+            # elif high_lidar_mid > lidar_mid_index + deviation_range :
+            #     if self._min_speed < velocity < self._opitmal_speed and steer > 0.2:
+            #         curr_reward += 0.02 * velocity
+            #     elif steer < 0:
+            #         curr_reward -= 0.2
+            #     # self._display_lidar(states)
+            # elif high_lidar_mid < lidar_mid_index - deviation_range:
+            #     if self._min_speed < velocity < self._opitmal_speed and steer < -0.2:
+            #         curr_reward += 0.02 * velocity
+            #     elif steer > 0:
+            #         curr_reward -= 0.2
+                # self._display_lidar(states)
+            # Make sure to decrease the accceleration when the car is too fast
+            elif high_lidar_mid > lidar_mid_index + deviation_range:
+                # logging.debug(f'high_lidar_mid: {high_lidar_mid}, lidar_mid_index: {lidar_mid_index}')
+                if 0.5 < velocity < 2:
+                    curr_reward += 0.0003 * velocity * (high_lidar_mid -lidar_mid_index)   # accleration is negative when decelerating
+                elif 2 < velocity:
+                    curr_reward -= 0.05 * velocity
+            elif high_lidar_mid < lidar_mid_index - deviation_range:
+                if 0.5 < velocity < 2:
+                    curr_reward += 0.0003 * velocity * (lidar_mid_index - high_lidar_mid)  # accleration is negative when decelerating
+                elif 2 < velocity:
+                    curr_reward -= 0.05 * velocity
+            else:
+                curr_reward += 0.005 * velocity
+
+        # if acceleration > -10 
+
+        
+        #=========================================
+        # Check obstacles
+        range = 300
+        self._lidar_low_margin = 0.7 # 0.8->1->0.6(?)
+        self._mid_lidar_low_margin = 2.7 # 2.5->3>3.5(not good)->3(not bad)->3.2
+        self._mid_lidar_high_margin = 4 # 2.5->3>3.5(not good)->3(not bad)->3.2
+        # num_obstacles = len(np.where(lidar_scans < self._lidar_low_margin)[0]) # Count detected obstacles
+        left_obstacles = len(np.where(lidar_scans[:range] < self._lidar_low_margin)[0])
+        right_obstacles = len(np.where(lidar_scans[-range:] < self._lidar_low_margin)[0])
+        num_obstacles = left_obstacles + right_obstacles
+
+        s_range = 60 # 50->60 good -> 50
+        mid_l_obstacles = len(np.where(lidar_scans[lidar_mid_index-s_range:lidar_mid_index] < 2)[0])
+        mid_obstacles = len(np.where(lidar_scans[lidar_mid_index-s_range:lidar_mid_index+s_range] < self._mid_lidar_low_margin)[0])
+        mid_f_obstacles = len(np.where(lidar_scans[lidar_mid_index-s_range:lidar_mid_index+s_range] < self._mid_lidar_high_margin)[0])
+        ml_obstacles = len(np.where(lidar_scans[lidar_mid_index-70:lidar_mid_index-10] < self._mid_lidar_low_margin)[0])
+        mr_obstacles = len(np.where(lidar_scans[lidar_mid_index+10:lidar_mid_index+70] < self._mid_lidar_low_margin)[0])
+        self._acuter_margin = 1.7
+        self.acute_index = 120
+        acute_l_obstacles = len(np.where(lidar_scans[lidar_mid_index-self.acute_index-20:lidar_mid_index-self.acute_index+20] < self._acuter_margin)[0])
+        acute_r_obstacles = len(np.where(lidar_scans[lidar_mid_index+self.acute_index-20:lidar_mid_index+self.acute_index+20] < self._acuter_margin)[0])
+
+        baseline_obstacles = 250
+        
+        # logging.debug(f'acceleration: {acceleration}, velocity: {velocity}')
+        # if (mid_obstacles) == 120:
+        #     print(f'Obstacle Detected: {mid_obstacles}, mid_obstacles')
+        # and (-0.2<steer<0.2) velocity > 2
+         
+        if (mid_l_obstacles) == 120:
+            curr_reward += 0.01 * abs(acceleration) * velocity
+            self._t_error +=1
+            self._cum_penalty -= 0.01 * abs(acceleration) * velocity
+            print(f'very close to the wall: {mid_l_obstacles}, mid_l_obstacles')
+        elif (mid_obstacles) == 120:
+            
+            if acceleration < 0 and 0.5 < velocity < 2 and not(-0.2<steer<0.2) :
+                curr_reward += 0.005 * abs(acceleration) * velocity# accleration is negative when decelerating
+                # self._t_error_recover += 1
+                # if self._t_error > 0:
+                #     self._t_error -=1
+                # else:
+                #     self._cum_penalty = 0
+            elif acceleration > 0 and velocity > 2.5:
+                # self._display_lidar(states)
+                curr_reward -= 0.05 * acceleration * velocity
+                self._t_error +=1
+                self._cum_penalty -= 0.01 * (ml_obstacles + mr_obstacles) * velocity
+                
+                local_margin = 0.8
+                right_ob = len(np.where(lidar_scans[-range:] < local_margin)[0])
+                left_ob = len(np.where(lidar_scans[:range] < local_margin)[0])
+                num_ob = right_ob + left_ob
+                # Accelerate
+                acceleration = np.linalg.norm(states['acceleration'][3:])
+                print(f'Obstacle Detected1: {mid_obstacles}, mid_obstacles')
+                # print(f'acceleration: {acceleration}, velocity: {velocity}')
+            elif acceleration > 0 and (-0.5<steer<0.5):
+                # self._display_lidar(states)
+                curr_reward -= 0.05 * acceleration * velocity
+                self._t_error +=1
+                self._cum_penalty -= 0.01 * (ml_obstacles + mr_obstacles) * velocity
+                
+                local_margin = 0.8
+                right_ob = len(np.where(lidar_scans[-range:] < local_margin)[0])
+                left_ob = len(np.where(lidar_scans[:range] < local_margin)[0])
+                num_ob = right_ob + left_ob
+                # Accelerate
+                acceleration = np.linalg.norm(states['acceleration'][3:])
+                print(f'Obstacle Detected2: {mid_obstacles}, mid_obstacles')
+                # print(f'acceleration: {acceleration}, velocity: {velocity}')
+            # elif velocity > 2:
+            #     print('velocity > 2')
+            #     self._t_error +=0.2
+            #     self._cum_penalty -= 0.005 * (ml_obstacles + mr_obstacles) * velocity
+            #     curr_reward -= 0.005 * abs(acceleration) * velocity
+            # else:B
+            #     curr_reward += 0.005 * abs(acceleration) * velocity
+            # if num_ob >= 300:
+            #     self._t_error +=1
+            #     print(f'Obstacle Detected: {num_ob}, num_ob')
+            #     curr_reward -= 0.001 * num_ob * velocity
+        elif mid_f_obstacles == 120 and velocity > 3:
+            self._t_error += 0.5
+            # self._display_lidar(states)
+            self._cum_penalty -= 0.05 * acceleration * velocity
+            curr_reward -= 0.005 * acceleration * velocity
+
+
+        # Turn right
+        if ml_obstacles == 60 and ml_obstacles > mr_obstacles and steer < -0.5: # -0.2
+            self._t_error +=0.5
+            self._cum_penalty -= 0.005 * ml_obstacles * velocity * abs(steer)
+            # self._display_lidar(states)
+            print(f'Obstacle Detected: {ml_obstacles}, ml_obstacles')
+            if acute_l_obstacles == 40:
+                # self._t_error +=1
+                # self._cum_penalty -= 0.015 * acute_l_obstacles * velocity * abs(steer)
+                print(f'Obstacle Detected: {acute_l_obstacles}, acute_l_obstacles')
+        # Turn left
+        elif mr_obstacles == 60 and mr_obstacles > ml_obstacles and steer > 0.5: # 0.2
+            self._t_error +=0.5
+            self._cum_penalty -= 0.005 * mr_obstacles * velocity * abs(steer)
+            # self._display_lidar(states)
+            print(f'Obstacle Detected: {mr_obstacles}, mr_obstacles')
+            if acute_r_obstacles == 40:
+                # self._t_error +=1
+                # self._cum_penalty -= 0.015 * acute_r_obstacles * velocity * abs(steer)
+                print(f'Obstacle Detected: {acute_r_obstacles}, acute_r_obstacles')
+        elif num_obstacles>baseline_obstacles and left_obstacles > right_obstacles and steer < -0.5:
+            self._t_error +=1
+            self._cum_penalty -= 0.005 * (num_obstacles - baseline_obstacles)
+            # curr_reward -= 0.003 * (num_obstacles)
+            print(f'Obstacle Detected: {left_obstacles}, left_obstacles')
+        elif num_obstacles>baseline_obstacles and right_obstacles > left_obstacles and steer > 0.5:
+            self._t_error +=1
+            self._cum_penalty -= 0.005 * (num_obstacles - baseline_obstacles)
+            # curr_reward -= 0.003 * (num_obstacles)
+            print(f'Obstacle Detected: {right_obstacles}, right_obstacles')
+        else:
+            self._t_error_recover += 1
+            # if self._t_error == 0:
+            #     self._cum_penalty = 0
+            if self._t_error > 0:
+                self._t_error -=1
+            else:
+                self._cum_penalty = 0
+            
+            steer_reward =  abs(steer) if abs(steer) <= 1 else 1
+            curr_reward += 0.005 * steer_reward
+
+        # Time delay penalty at the continuous error
+        if t_last > self._t_error:
+            self._t_error_recover = 0
+        if self._t_error_recover > self._t_max: # Cancel the penalty when check for 3 times
+            self._t_error = 0
+            self._t_error_recover = 0
+            self._cum_penalty = 0
+        if self._t_error > self._t_max:
+            self._t_error += 1
+            curr_reward = self._cum_penalty * 0.05 * (np.log2((self._t_error - self._t_max))+1)
+            print(f'get penlaty: {curr_reward}')
+
+        t = t_last
+        return curr_reward
 
     def _check_lidar2(self, states, action) -> float: # 1009 0952
         self._lidar_high_margin = 4
@@ -256,7 +464,7 @@ class CollisionDetectionTask:
 
         # return curr_reward
             
-    def _check_lidar3(self, states, action) -> float:
+    def _check_lidar3(self, states, action) -> float: # 灣過的偏慢，其他檢測沒問題
         self._lidar_high_margin = 4
         t_last = 0
         range = 100
