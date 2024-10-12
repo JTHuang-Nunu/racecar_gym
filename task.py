@@ -59,15 +59,14 @@ class MixTask:
         if 'action' in mode:
             print(console_list[2])
         
-
 class MaximizeProgressTask:
     def __init__(self, obs, info, progress_reward: float = 100.0):
         self._last_stored_progress = info['lap'] + info['progress']
         self._progress_reward = progress_reward
         self._t_low_motor = int(0)
-        self._opitmal_speed = 3.0
-        self._max_speed = 5.0
-        self._min_speed = 0.5
+        self._opitmal_speed = 2
+        self._max_speed = 4
+        self._min_speed = 0.3
         
         self._t_low_upper = 1000
     def reward(self, states, action) -> float:
@@ -81,14 +80,14 @@ class MaximizeProgressTask:
         curr_reward = progress_reward
 
         # Control Speed
-        velocity = np.linalg.norm(states['velocity'])
-        speed_reward = 0.0
-        if self._min_speed < velocity < self._opitmal_speed:
-            speed_reward = 0.003 * velocity
-        elif velocity >= self._opitmal_speed:
-            speed_reward = 0.005 * self._opitmal_speed - 0.001 * (velocity - self._opitmal_speed)
-        else:
-            speed_reward = -0.1 *  (self._min_speed - velocity)
+        # velocity = np.linalg.norm(states['velocity'])
+        # speed_reward = 0.0
+        # if self._min_speed < velocity < self._opitmal_speed:
+        #     speed_reward = 0.005 * velocity
+        # elif velocity >= self._opitmal_speed:
+        #     speed_reward = 0.003 - 0.003 * (velocity - self._opitmal_speed)
+        # else:#DEL
+        #     speed_reward = -0.02 * abs(self._min_speed - velocity)
         # if velocity < 1:
         #     self._t_low_motor += 1
         #     if self._t_low_motor > 100:
@@ -96,7 +95,7 @@ class MaximizeProgressTask:
         # elif velocity > 1:
         #     self._t_low_motor = 0
         #     curr_reward += 0.001 * velocity
-        curr_reward += speed_reward
+        curr_reward
 
         self._last_stored_progress = progress
         return curr_reward
@@ -122,16 +121,22 @@ class CollisionDetectionTask:
         self._t_error = 0
         self._t_max = 7 # 7->4
         self._t_error_recover = 0
+        self._t_last = 0
         self._cum_penalty = 0
+
+        self._opitmal_speed = 2.5
+        self._max_speed = 4
+        self._min_speed = 0.3
+        self._opitmal_turn_speed = 1.5
+        self._max_turn_speed = 2.7
+        self._min_turn_speed = 0.3
         # Scan scope
         self._scan_range = scan_range
+        self._t_display = 0
         # plt.ion()
         # self._fig = plt.figure(figsize=(10, 5))
 
-        # Speed
-        self._opitmal_speed = 3.0
-        self._max_speed = 5.0
-        self._min_speed = 0.3
+
         # self._opitmal_acceleration = 5.0
         # self._max_acceleration = 7.0
         # self._min_sacceleration = 0.3
@@ -139,11 +144,13 @@ class CollisionDetectionTask:
     def reward(self, states, action) -> float:
         # If a collision occurs, return the collision penalty
         curr_reward = float(0.0)
+        curr_reward += self._check_lidar5(states, action) #TODO
+        return curr_reward
         curr_reward += self._check_collision(states)
         if curr_reward == self._collision_penalty: # Collision
             return curr_reward
         else:
-            curr_reward += self._check_lidar4(states, action) #TODO
+            curr_reward += self._check_lidar5(states, action) #TODO
             return curr_reward
 
     def done(self, states) -> bool:
@@ -158,8 +165,172 @@ class CollisionDetectionTask:
     def reset(self):
         self._collided = False
 
+    def _check_lidar5(self, states, action) -> float: # 1011
+        velocity = np.linalg.norm(states['velocity'][:3])
+        acceleration = np.linalg.norm(states['acceleration'][:3])
+        acceleration = 20 if acceleration > 20 else acceleration
+        acceleration = -20 if acceleration < -20 else acceleration
+        steer = action[1] 
+        steer = np.where(steer > 1, 1, steer)
+        steer = np.where(steer < -1, -1, steer)
+
+        integral_mode = 0
+        def _integral(lidar_scans, mode=1):
+            # Method 1
+            if mode == 0:
+                value =  np.sum(lidar_scans)
+            # Method 2
+            if mode == 1:
+                value = np.trapz(lidar_scans, dx=1)
+            # logging.info(f'Integral Value: {value-1400}')
+            return value
+
+        range = 150
+        
+        lidar_scans = states['lidar'][range:-range]
+        lidar_scans = np.where(lidar_scans > 5, 5, lidar_scans)
+        integral_value = _integral(lidar_scans, mode=integral_mode)
+        # self._display_lidar(lidar_scans)
+
+        mid_lidar = len(lidar_scans)//2
+        r_lidar_scans = lidar_scans[mid_lidar:]
+        l_lidar_scans = lidar_scans[:mid_lidar]
+        m_lidar_scans = lidar_scans[mid_lidar-50:mid_lidar+50]
+        r_integral = _integral(r_lidar_scans, mode=integral_mode)
+        l_integral = _integral(l_lidar_scans, mode=integral_mode)
+        m_integral = _integral(m_lidar_scans, mode=integral_mode)
+        el_integral = _integral(l_lidar_scans[:75], mode=integral_mode)
+        er_integral = _integral(r_lidar_scans[-75:], mode=integral_mode)
+        elm_integral = _integral(l_lidar_scans[:50], mode=integral_mode)
+        erm_integral = _integral(r_lidar_scans[-50:], mode=integral_mode)
+
+        # logging.info(f'm_integral: {m_integral}, r_integral: {r_integral}, l_integral: {l_integral}')
+        diff_integral = r_integral - l_integral
+        diff_s_threshold = 400
+        diff_m_threshold = 550
+        diff_b_threshold = 700
+        scaling_factor = 1 / (1 + 2 * abs(steer))
+        steer_defactor = 1.1-abs(steer) # (1-steer) / max_steer
+        curr_reward = float(0.0)
+        detect = False# Ture Detect
+        abs_steer = abs(steer)
+
+        self._t_error_recover += 1
+        # Lidar check
+        if 250 >= m_integral > 100 and velocity > self._min_turn_speed:
+            # logging.info(f'mmm_integral: {m_integral}')
+            curr_reward += 0.0001 * abs_steer * (250-m_integral) * (1/(velocity+self._min_turn_speed))
+        if elm_integral >= 130 and elm_integral>erm_integral and velocity > self._min_turn_speed:
+            logging.info(f'em_integral: {elm_integral}, {erm_integral}')
+            curr_reward += 0.001 * abs_steer * (elm_integral-130) * (1/(velocity+0.1))
+        if erm_integral >= 130 and elm_integral<erm_integral and velocity > self._min_turn_speed:
+            logging.info(f'em_integral: {elm_integral}, {erm_integral}')
+            curr_reward += 0.001 * abs_steer * (erm_integral-130) * (1/(velocity+0.1))
+
+        if el_integral > 100 and el_integral > er_integral and steer < 0.2 : # Turn left
+            if self._min_turn_speed < velocity <= self._opitmal_turn_speed:
+                curr_reward += 0.05 * abs_steer * el_integral/100
+            elif velocity > self._opitmal_turn_speed:
+                self._t_error += 1
+                curr_reward += 0.05 * abs_steer - 0.005 * (velocity - self._opitmal_speed) * el_integral/100
+            else:
+                self._t_error += 1
+                curr_reward -= 0.01 * abs(self._min_turn_speed - velocity)
+            logging.info(f'el_integral: {el_integral}')
+        elif er_integral > 100 and er_integral>el_integral and steer > -0.2: # Turn right
+            if self._min_turn_speed < velocity <= self._opitmal_turn_speed:
+                curr_reward += 0.05 * abs_steer * er_integral/100
+            elif velocity > self._opitmal_turn_speed:
+                self._t_error += 1
+                curr_reward += 0.05 * abs_steer - 0.005 * (velocity - self._opitmal_speed) * er_integral/100
+            else:
+                self._t_error += 1
+                curr_reward -= 0.01 * abs(self._min_turn_speed - velocity)
+            logging.info(f'er_integral: {er_integral}')
+        # elif abs(diff_integral) > diff_s_threshold:
+        #     logging.info(f'diff_s_integral: {diff_integral}')
+        #     # Diff Integral
+        #     if self._min_turn_speed <velocity< self._opitmal_turn_speed:
+        #         if r_integral > l_integral and steer > -0.5:        # Turn right
+        #             curr_reward += 0.01 * (1/(velocity+1)) * abs_steer
+        #         elif l_integral > r_integral and steer < 0.5:      # Turn left
+        #             curr_reward += 0.01 * (1/(velocity +1)) * abs_steer
+        #         else:
+        #             self._t_error += 1
+        #     else:
+        #         self._t_error += 1
+        elif abs(diff_integral) > diff_m_threshold:
+            logging.info(f'diff_b_integral: {diff_integral}')
+            # Diff Integral
+            if self._min_turn_speed <velocity< self._opitmal_turn_speed:
+                if r_integral > l_integral and steer > -0.2:        # Turn right
+                    curr_reward += 0.03 * (1/(velocity + 1)) * abs_steer
+                elif l_integral > r_integral and steer < 0.2:      # Turn left
+                    curr_reward += 0.03 * (1/(velocity+1)) * abs_steer
+                else: 
+                    self._t_error += 1
+            else:
+                self._t_error += 1
+                curr_reward -= 0.03 * (steer_defactor)
+        elif abs(diff_integral) > diff_b_threshold:
+            logging.info(f'diff_max_integral: {diff_integral}')
+            # Diff Integral
+            if r_integral > l_integral and steer > 0:        # Turn right
+                curr_reward += 0.07 * (3/(velocity+1)) * abs_steer
+            elif l_integral > r_integral and steer < 0:      # Turn left
+                curr_reward += 0.07 * (3/(velocity+1)) * abs_steer
+            else:
+                self._t_error += 1
+                curr_reward -= 0.07 * (steer_defactor)           
+        elif m_integral > 250: # Straight(100p) #350 better
+            # logging.info(f'm_integral: {m_integral}')
+            # curr_reward += 0.001 * (abs_steer + 1) * (velocity+1)
+            curr_reward += 0.001 * (abs_steer + 1)
+        elif m_integral > 50: # Straight(100p)
+            logging.info(f'mm_integral: {m_integral}')
+            # curr_reward += 0.003 * (1/velocity) * abs_steer
+            e_integral = el_integral-er_integral
+            if (e_integral >15) and -1<=steer<=-0.2:
+                curr_reward += 0.005 * abs_steer * (1/(1+velocity)) * abs(el_integral-er_integral)/10
+            if (e_integral <-15) and 0.2<=steer<=1:
+                curr_reward += 0.005 * abs_steer * (1/(1+velocity)) * abs(er_integral-el_integral)/10
+            
+            if velocity > self._max_turn_speed or velocity < self._min_turn_speed:
+                # curr_reward -= 0.005 
+                self._t_error += 1
+                if acceleration > 5:
+                    curr_reward -= 0.005
+        else:
+            # Staight small
+            # Turn not sure
+            logging.info(f'else')
+            self._t_error += 1#DEL
+            curr_reward -= 0.01 * (steer_defactor)
+            # self._display_lidar(states)
+        
+        # self._display_lidar(lidar_scans)
+        # Time delay penalty at the continuous error
+        if self._t_error > self._t_last:
+            self._t_error_recover = 0
+        self._t_last = self._t_error
+        if self._t_error_recover > self._t_max//2: # Cancel the penalty when check for 3 times
+            self._t_error = 0
+            self._t_error_recover = 0
+            self._cum_penalty = 0
+        if self._t_error > self._t_max:
+            curr_reward -= 0.03 * (np.log2((self._t_error - self._t_max))+1) * ((velocity+1))
+            # curr_reward -= 0.01 * ((self._t_error - self._t_max)+1) * ((velocity+1))
+            logging.error(f'get penlaty: {curr_reward}')
+
+        return curr_reward
+
 
     def _check_lidar4(self, states, action) -> float: # 1010
+        self._check_lidar5(states, action)
+        # Speed
+        self._opitmal_speed = 3.0
+        self._max_speed = 5.0
+        self._min_speed = 0.3
         self._lidar_high_margin = 4
         t_last = 0
         range = 50
@@ -310,31 +481,31 @@ class CollisionDetectionTask:
             self._t_error +=0.5
             self._cum_penalty -= 0.005 * ml_obstacles * velocity * abs(steer)
             # self._display_lidar(states)
-            print(f'Obstacle Detected: {ml_obstacles}, ml_obstacles')
-            if acute_l_obstacles == 40:
+            # print(f'Obstacle Detected: {ml_obstacles}, ml_obstacles')
+            # if acute_l_obstacles == 40:
                 # self._t_error +=1
                 # self._cum_penalty -= 0.015 * acute_l_obstacles * velocity * abs(steer)
-                print(f'Obstacle Detected: {acute_l_obstacles}, acute_l_obstacles')
+                # print(f'Obstacle Detected: {acute_l_obstacles}, acute_l_obstacles')
         # Turn left
         elif mr_obstacles == 60 and mr_obstacles > ml_obstacles and steer > 0.5: # 0.2
             self._t_error +=0.5
             self._cum_penalty -= 0.005 * mr_obstacles * velocity * abs(steer)
             # self._display_lidar(states)
-            print(f'Obstacle Detected: {mr_obstacles}, mr_obstacles')
-            if acute_r_obstacles == 40:
+            # print(f'Obstacle Detected: {mr_obstacles}, mr_obstacles')
+            # if acute_r_obstacles == 40:
                 # self._t_error +=1
                 # self._cum_penalty -= 0.015 * acute_r_obstacles * velocity * abs(steer)
-                print(f'Obstacle Detected: {acute_r_obstacles}, acute_r_obstacles')
+                # print(f'Obstacle Detected: {acute_r_obstacles}, acute_r_obstacles')
         elif num_obstacles>baseline_obstacles and left_obstacles > right_obstacles and steer < -0.5:
             self._t_error +=1
             self._cum_penalty -= 0.005 * (num_obstacles - baseline_obstacles)
             # curr_reward -= 0.003 * (num_obstacles)
-            print(f'Obstacle Detected: {left_obstacles}, left_obstacles')
+            # print(f'Obstacle Detected: {left_obstacles}, left_obstacles')
         elif num_obstacles>baseline_obstacles and right_obstacles > left_obstacles and steer > 0.5:
             self._t_error +=1
             self._cum_penalty -= 0.005 * (num_obstacles - baseline_obstacles)
             # curr_reward -= 0.003 * (num_obstacles)
-            print(f'Obstacle Detected: {right_obstacles}, right_obstacles')
+            # print(f'Obstacle Detected: {right_obstacles}, right_obstacles')
         else:
             self._t_error_recover += 1
             # if self._t_error == 0:
@@ -659,19 +830,20 @@ class CollisionDetectionTask:
 
         return curr_reward
 
-    def _display_lidar(self, states):
-        lidar_scans = states['lidar']
-        plt.clf()
-        # if not hasattr(self, '_fig'):
-        #     self._fig = plt.figure(figsize=(10, 5))
-        plt.plot(lidar_scans, label='Lidar Scan Distances')
-        plt.xlabel('Lidar Scan Index')
-        plt.ylabel('Distance (meters)')
-        plt.title('1D Lidar Scan Visualization')
-        plt.grid(True)
-        plt.legend()
-        plt.pause(0.001)
-        # plt.ioff()
+    def _display_lidar(self, lidar_scans):
+        self._t_display += 1
+        if self._t_display%50 == 0:
+            plt.clf()
+            # if not hasattr(self, '_fig'):
+            #     self._fig = plt.figure(figsize=(10, 5))
+            plt.plot(lidar_scans, label='Lidar Scan Distances')
+            plt.xlabel('Lidar Scan Index')
+            plt.ylabel('Distance (meters)')
+            plt.title('1D Lidar Scan Visualization')
+            plt.grid(True)
+            plt.legend()
+            plt.pause(0.001)
+            # plt.ioff()
     def _check_collision(self, states) -> float:
         """
         Assume a simple collision detection logic
@@ -699,8 +871,24 @@ class TrackingTask:
         self._last_action = self._init_action
         self._state_gain = state_gain
         self._action_gain = action_gain
-                 
+
+
+        self._opitmal_speed = 2
+        self._max_speed = 4
+        self._min_speed = 0.3
+    
     def reward(self, states, action) -> float:
+        velocity = np.linalg.norm(states['velocity'])
+        speed_reward = 0.0
+        if self._min_speed < velocity < self._opitmal_speed:
+            speed_reward = 0.005 * velocity
+        elif velocity >= self._opitmal_speed:
+            speed_reward = 0.005 - 0.002 * (velocity - self._opitmal_speed)
+        else:#DEL
+            speed_reward = -0.02 * abs(self._min_speed - velocity)
+        return speed_reward
+
+    def reward_bak(self, states, action) -> float:
         """
         Idea: def. a quadratic cost by weighting the deviation from a target state (waypoint) and from the prev action.
         However, aiming to have a positive reward, the change the sign (i.e. reward=-cost) lead to cumulative penalties

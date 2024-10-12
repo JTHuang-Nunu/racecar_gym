@@ -70,7 +70,6 @@ class World(world.World):
         p.setTimeStep(self._config.time_step)
         p.setGravity(0, 0, self._config.gravity)
 
-
     def reset(self):
         p.setTimeStep(self._config.time_step)
         p.setGravity(0, 0, self._config.gravity)

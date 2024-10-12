@@ -6,7 +6,7 @@ from matplotlib import pyplot as plt
 
 import racecar_gym.envs.gym_api  # Necessary!!!Cannot be deleted!!!
 from agent.Agent import get_valid_agent
-
+import pybullet as p
 
 if 'racecar_gym.envs.gym_api' not in sys.modules:
     raise RuntimeError('Please run: pip install -e . and import racecar_gym.envs.gym_api first!')
@@ -21,12 +21,13 @@ def main():
         'SingleAgentAustria-v0',
         render_mode=render_mode,
         # scenario='scenarios/circle_cw.yml',  # change the scenario here (change map)
-        scenario='scenarios/torino.yml'
-        # scenario='scenarios/validation.yml',  # change the scenario here (change map), ONLY USE THIS FOR VALIDATION
+        # scenario='scenarios/validation2.yml'
+        scenario='scenarios/validation.yml',  # change the scenario here (change map), ONLY USE THIS FOR VALIDATION
         # scenario='scenarios/validation2.yml',   # Use this during the midterm competition, ONLY USE THIS FOR VALIDATION
     )
     done = False
-    agent = get_valid_agent(agent_name='PPO_VALID', model_path='./agent/PPO/weight_23.pth')
+    # agent = get_valid_agent(agent_name='PPO_VALID', model_path='./agent/PPO/weight_9.pth')
+    agent = get_valid_agent(agent_name='PPO_VALID', model_path='./agent/PPO/weight/weight_10.pth')
 
     # ======================================================================
     # Run the environment
@@ -39,7 +40,7 @@ def main():
         # ==================================
         action = agent.get_action(obs)
         obs, rewards, done, truncated, states = env.step(action)
-
+        p.resetDebugVisualizerCamera(cameraDistance=20, cameraYaw=180, cameraPitch=-70, cameraTargetPosition=states['pose'][:3])
         if t % 30 == 0 and "rgb" in render_mode:
             # ==================================
             # Render the environment

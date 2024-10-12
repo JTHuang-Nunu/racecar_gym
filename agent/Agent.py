@@ -38,13 +38,12 @@ def get_training_agent(agent_name: str = 'DQN', max_step: int = 6000, model_path
             max_step=max_step,
             gamma=0.99,
             lamb=0.95,
-            lr=1e-4,
+            lr=1e-4, # 1e-4->3e-4
             clip_val=0.2,
             max_grad_norm=0.5,
-            ent_weight=0.01,
+            ent_weight=0.01, # 0.01->0.03
             sample_n_epoch=10, # 4->10
-            sample_mb_size=32, # 64->128
-            is_training=True,
+            sample_mb_size=64, # 64
             is_resume_training=True,
             # model_path='./agent/PPO/weight.pth'
             model_path='./agent/PPO/weight_23.pth' if model_path is None else model_path

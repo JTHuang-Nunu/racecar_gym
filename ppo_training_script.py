@@ -26,8 +26,8 @@ scenarios = [
     'scenarios/austria.yml',
 ]
 render_mode = 'human'  # 'human', 'rgb_array_birds_eye' and 'rgb_array_follow'
-logging.basicConfig(level=logging.DEBUG,
-                    format='%(levelname)s: %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+# logging.basicConfig(level=logging.CRITICAL, format='%(levelname)s: %(message)s')
 
 def make_env(env_id):
     # ======================================================================
@@ -129,16 +129,16 @@ def main():
     EPOCHS = 10000
     MAX_STEP = 6000
     best_reward = -np.inf
-    agent = get_training_agent(agent_name='PPO_LOAD', max_step=MAX_STEP, model_path='./agent/PPO/weight/weight_9.pth')
-    env = make_env(env_id=4)
+    agent = get_training_agent(agent_name='PPO_LOAD', max_step=MAX_STEP, model_path='./agent/PPO/weight/weight_10.pth')
+    env = make_env(env_id=3)
     set
     console_speed:bool = False
     console:bool = True
 
     for e in range(EPOCHS):
-        obs, info = env.reset(options=dict(mode='random')) # mode='grid', 'random', 'random_ball'
+        obs, info = env.reset(options=dict(mode='grid')) # mode='grid', 'random', 'random_ball', 'random_bidirectional
         # p.resetDebugVisualizerCamera(cameraDistance=30, cameraYaw=0, cameraPitch=-70, cameraTargetPosition=[0,0,0])
-        task = MixTask(task_weights={'progress': 1, 'tracking': 0.0, 'collision': 1.0}, obs=obs, info=info)
+        task = MixTask(task_weights={'progress': 1, 'tracking': 1.0, 'collision': 1.0}, obs=obs, info=info)
         t = 0
         total_reward = 0
         done = False
@@ -159,14 +159,18 @@ def main():
 
             # Calculate reward
             reward = float(0.0)
-            task_reward,done = task.reward(states, action)
+            task_reward, done = task.reward(states, action)
             reward += task_reward
+            done = False # TODO
             # reward += check_lidar(obs, states, action)
             if t<100:
                 reward = 0
 
             total_reward += reward
-            if total_reward <= -10 or done:
+            # if total_reward <= -10 or done:
+            #     total_reward = -10
+            #     done = True
+            if total_reward <= -10:
                 total_reward = -10
                 done = True
             # Print data
